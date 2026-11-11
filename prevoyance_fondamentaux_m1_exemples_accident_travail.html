@@ -95,22 +95,26 @@
 
 const DEFAULTS={smic_mensuel:1867.02,ij_mal_taux:0.50,ij_mal_diviseur:91.25,ij_mal_plafond_salaire:2613.83,
   ij_mal_montant_max:42.97,ij_mal_carence:3,at_taux1:0.60,at_taux2:0.80,at_diviseur_sjr:30.42,at_sjr_plafond:400.82,
-  at_coef_gain_net:0.79,at_ij_max_1_28:240.49,at_ij_max_29:320.66,at_carence:0};
+  at_coef_gain_net:0.79,at_ij_max_1_28:240.49,at_ij_max_29:320.66,at_carence:0,
+  at_sjr_plafond_reforme:108.62,at_ij_max_1_28_reforme:65.17,at_ij_max_29_reforme:86.89};
+// Accident survenu aujourd'hui : plafonds de la réforme (AT/MP survenus à compter du 01/11/2026)
+function plafondsAT(){ return {sjr:P.at_sjr_plafond_reforme??P.at_sjr_plafond, m1:P.at_ij_max_1_28_reforme??P.at_ij_max_1_28, m2:P.at_ij_max_29_reforme??P.at_ij_max_29}; }
 const COEF_SALAIRE=1.6;   // salaire brut = 1,6 × SMIC (énoncé)
 const DUREE_ARRET=45;     // jours d'arrêt (énoncé)
 let D={};
 function calc(){
   const brut=r2(P.smic_mensuel*COEF_SALAIRE);
-  const sjrBrut=brut/P.at_diviseur_sjr, sjr=Math.min(sjrBrut,P.at_sjr_plafond);
+  const PL=plafondsAT();
+  const sjrBrut=brut/P.at_diviseur_sjr, sjr=Math.min(sjrBrut,PL.sjr);
   const gainNet=sjr*P.at_coef_gain_net;
   const a1=sjr*P.at_taux1, a2=sjr*P.at_taux2;
-  const ij1=r2(Math.min(a1,gainNet,P.at_ij_max_1_28)), ij2=r2(Math.min(a2,gainNet,P.at_ij_max_29));
+  const ij1=r2(Math.min(a1,gainNet,PL.m1)), ij2=r2(Math.min(a2,gainNet,PL.m2));
   const n1=Math.min(DUREE_ARRET,28), n2=Math.max(0,DUREE_ARRET-28);
   const totAT=n1*ij1+n2*ij2;
   const retenu=Math.min(brut,P.ij_mal_plafond_salaire), sjb=3*retenu/P.ij_mal_diviseur;
   const ijm=Math.min(r2(sjb*P.ij_mal_taux),P.ij_mal_montant_max), nm=Math.max(0,DUREE_ARRET-P.ij_mal_carence);
   const totMal=nm*ijm;
-  D={brut,sjrBrut,sjr,gainNet,a1,a2,ij1,ij2,n1,n2,totAT,retenu,sjb,ijm,nm,totMal};
+  D={brut,sjrBrut,sjr,gainNet,a1,a2,ij1,ij2,n1,n2,totAT,retenu,sjb,ijm,nm,totMal,PL};
 }
 function render(){
   calc();
@@ -120,9 +124,10 @@ function render(){
      <p>Elle se blesse au dos en manipulant une palette sur son lieu de travail. L'accident est déclaré et reconnu comme <b>accident du travail</b>. Elle est arrêtée <b>${DUREE_ARRET} jours</b> à compter du lendemain de l'accident.</p>`;
   document.getElementById('hypList').innerHTML=
     `<li>Le jour de l'accident est payé intégralement par l'employeur ; les IJ sont dues dès le lendemain, <b>sans délai de carence</b>.</li>
-     <li>Salaire journalier de référence (SJR) = salaire brut du mois précédent ÷ ${num(P.at_diviseur_sjr)}, plafonné à ${eur(P.at_sjr_plafond)}.</li>
+     <li>Accident survenu à compter du 01/11/2026 : plafonds issus de la réforme de l'indemnisation des AT/MP.</li>
+     <li>Salaire journalier de référence (SJR) = salaire brut du mois précédent ÷ ${num(P.at_diviseur_sjr)}, plafonné à ${eur(D.PL.sjr)}.</li>
      <li>IJ AT = ${pct(P.at_taux1)} du SJR du 1er au 28e jour, puis ${pct(P.at_taux2)} à partir du 29e jour.</li>
-     <li>L'IJ ne peut dépasser le gain journalier net, soit le SJR diminué de 21 % (${pct(P.at_coef_gain_net)} du SJR), ni ${eur(P.at_ij_max_1_28)} (jours 1 à 28) et ${eur(P.at_ij_max_29)} (à partir du 29e jour).</li>
+     <li>L'IJ ne peut dépasser le gain journalier net, soit le SJR diminué de 21 % (${pct(P.at_coef_gain_net)} du SJR), ni ${eur(D.PL.m1)} (jours 1 à 28) et ${eur(D.PL.m2)} (à partir du 29e jour).</li>
      <li>Pour comparer, maladie ordinaire : IJ = ${pct(P.ij_mal_taux)} du SJB (3 salaires plafonnés à ${eur(P.ij_mal_plafond_salaire)} ÷ ${num(P.ij_mal_diviseur)}), maximum ${eur(P.ij_mal_montant_max)}/jour, après ${P.ij_mal_carence} jours de carence.</li>
      <li>Montants bruts, recalculés à partir de la table des paramètres ; le complément employeur (loi de mensualisation) n'est pas traité ici.</li>`;
   document.getElementById('footNote').innerHTML=
@@ -131,7 +136,7 @@ function render(){
 const CORR={
   q1:()=>`<table>
     <tr><td class="lbl">SJR = ${eur(D.brut)} ÷ ${num(P.at_diviseur_sjr)}</td><td class="val">${eur(D.sjrBrut)}</td></tr>
-    ${D.sjrBrut>P.at_sjr_plafond?`<tr><td class="lbl">SJR plafonné</td><td class="val">${eur(D.sjr)}</td></tr>`:''}
+    ${D.sjrBrut>D.PL.sjr?`<tr><td class="lbl">SJR plafonné</td><td class="val">${eur(D.sjr)}</td></tr>`:''}
     <tr class="total"><td class="lbl">Salaire journalier de référence retenu</td><td class="val">${eur(D.sjr)}</td></tr>
     <tr><td class="lbl">Gain journalier net = SJR − 21 % (plafond de l'IJ)</td><td class="val">${eur(D.gainNet)}</td></tr>
   </table>
@@ -139,10 +144,10 @@ const CORR={
   <span class="mois"> Il se calcule sur le seul mois précédant l'arrêt (÷ ${num(P.at_diviseur_sjr)}), et non sur 3 mois comme en maladie ; le gain journalier net de ${eur(D.gainNet)} servira de plafond.</span></div>`,
   q2:()=>`<table>
     <tr><td class="lbl">Jours 1 à 28 : ${pct(P.at_taux1)} × ${eur(D.sjr)}</td><td class="val">${eur(D.a1)}</td></tr>
-    <tr><td class="lbl sub">Plafond gain net ${eur(D.gainNet)} · plafond légal ${eur(P.at_ij_max_1_28)}</td><td class="val">${D.ij1<r2(D.a1)?'atteint':'non atteint'}</td></tr>
+    <tr><td class="lbl sub">Plafond gain net ${eur(D.gainNet)} · plafond légal ${eur(D.PL.m1)}</td><td class="val">${D.ij1<r2(D.a1)?'atteint':'non atteint'}</td></tr>
     <tr class="total"><td class="lbl">IJ du 1er au 28e jour</td><td class="val">${eur(D.ij1)}</td></tr>
     <tr><td class="lbl">À partir du 29e jour : ${pct(P.at_taux2)} × ${eur(D.sjr)}</td><td class="val">${eur(D.a2)}</td></tr>
-    <tr><td class="lbl sub">Plafond gain net ${eur(D.gainNet)} · plafond légal ${eur(P.at_ij_max_29)}</td><td class="val">${D.ij2<r2(D.a2)?'atteint':'non atteint'}</td></tr>
+    <tr><td class="lbl sub">Plafond gain net ${eur(D.gainNet)} · plafond légal ${eur(D.PL.m2)}</td><td class="val">${D.ij2<r2(D.a2)?'atteint':'non atteint'}</td></tr>
     <tr class="total"><td class="lbl">IJ à partir du 29e jour</td><td class="val">${eur(D.ij2)}</td></tr>
   </table>
   <div class="answer"><b>Madame L. perçoit ${eur(D.ij1)} par jour du 1er au 28e jour, puis ${eur(D.ij2)} par jour.</b>
@@ -154,7 +159,7 @@ const CORR={
     <tr class="total"><td class="lbl">Écart en faveur de l'accident du travail</td><td class="val">${eur(D.totAT-D.totMal)}</td></tr>
   </table>
   <div class="answer"><b>Sur ${DUREE_ARRET} jours, Madame L. perçoit ${eur(D.totAT)} bruts au titre de l'accident du travail, contre ${eur(D.totMal)} pour un arrêt maladie ordinaire.</b>
-  <span class="mois"> L'AT est plus protecteur : pas de carence, des taux de ${pct(P.at_taux1)} puis ${pct(P.at_taux2)} au lieu de ${pct(P.ij_mal_taux)}, et un salaire de référence beaucoup moins plafonné. Les soins sont en outre pris en charge à 100 %.</span></div>`
+  <span class="mois"> L'AT est plus protecteur : pas de carence, des taux de ${pct(P.at_taux1)} puis ${pct(P.at_taux2)} au lieu de ${pct(P.ij_mal_taux)}, et un salaire de référence moins plafonné. Les soins sont en outre pris en charge à 100 %.</span></div>`
 };
 const SUPABASE_URL="https://ibkvyjlglwufxvzxnysa.supabase.co";
 const SUPABASE_ANON_KEY="sb_publishable_xUfZHSOHf4TnBRRyzU_qJA_TcXIMSKX";
